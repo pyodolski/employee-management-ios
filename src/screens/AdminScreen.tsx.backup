@@ -8,15 +8,10 @@ import {
   Alert,
   RefreshControl,
   ActivityIndicator,
-  SafeAreaView,
 } from "react-native";
 import { supabase } from "../config/supabase";
 import { format } from "date-fns";
 import { ko } from "date-fns/locale";
-import { calculateWorkHours } from "../utils/timeUtils";
-import EmployeeDetailScreen from "./EmployeeDetailScreen";
-import AnnouncementBanner from "../components/AnnouncementBanner";
-import AnnouncementManageScreen from "./AnnouncementManageScreen";
 
 interface WorkLog {
   id: string;
@@ -58,27 +53,10 @@ export default function AdminScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
-  const [selectedMonth, setSelectedMonth] = useState(
-    format(new Date(), "yyyy-MM")
-  );
-  const [monthlyStats, setMonthlyStats] = useState<{
-    [key: string]: MonthlyStats;
-  }>({});
-  const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(
-    null
-  );
-  const [showAnnouncementManage, setShowAnnouncementManage] = useState(false);
-  const [announcementRefresh, setAnnouncementRefresh] = useState(0);
 
   useEffect(() => {
     fetchData();
   }, [activeTab]);
-
-  useEffect(() => {
-    if (activeTab === "employees" && employees.length > 0) {
-      loadMonthlyStats();
-    }
-  }, [employees, selectedMonth, activeTab]);
 
   const fetchData = async () => {
     if (activeTab === "approval") {
@@ -129,65 +107,6 @@ export default function AdminScreen() {
     } finally {
       setLoading(false);
       setRefreshing(false);
-    }
-  };
-
-  const loadMonthlyStats = async () => {
-    const stats: { [key: string]: MonthlyStats } = {};
-
-    for (const employee of employees) {
-      const stat = await calculateMonthlyStats(employee.id, selectedMonth);
-      stats[employee.id] = {
-        ...stat,
-        expectedPay: stat.totalHours * (employee.hourly_wage || 0),
-      };
-    }
-
-    setMonthlyStats(stats);
-  };
-
-  const calculateMonthlyStats = async (employeeId: string, month: string) => {
-    try {
-      const startDate = format(new Date(month + "-01"), "yyyy-MM-dd");
-      const endDate = format(
-        new Date(
-          new Date(month + "-01").getFullYear(),
-          new Date(month + "-01").getMonth() + 1,
-          0
-        ),
-        "yyyy-MM-dd"
-      );
-
-      const { data: logs, error } = await supabase
-        .from("work_logs")
-        .select("*")
-        .eq("user_id", employeeId)
-        .eq("status", "approved")
-        .gte("date", startDate)
-        .lte("date", endDate);
-
-      if (error) throw error;
-
-      let totalHours = 0;
-      logs?.forEach((log: any) => {
-        if (log.work_type === "day_off" || !log.clock_in || !log.clock_out) {
-          return;
-        }
-        const hours = calculateWorkHours(
-          log.clock_in,
-          log.clock_out,
-          log.work_type
-        );
-        totalHours += Number(hours);
-      });
-
-      return {
-        totalHours,
-        workDays: logs?.length || 0,
-        expectedPay: 0,
-      };
-    } catch (error) {
-      return { totalHours: 0, workDays: 0, expectedPay: 0 };
     }
   };
 
@@ -248,6 +167,21 @@ export default function AdminScreen() {
     ]);
   };
 
+  const calculateWorkHours = (
+    clockIn: string | null,
+    clockOut: string | null
+  ) => {
+    if (!clockIn || !clockOut) return 0;
+
+    const [inHour, inMin] = clockIn.split(":").map(Number);
+    const [outHour, outMin] = clockOut.split(":").map(Number);
+
+    const inMinutes = inHour * 60 + inMin;
+    const outMinutes = outHour * 60 + outMin;
+
+    return ((outMinutes - inMinutes) / 60).toFixed(1);
+  };
+
   const onRefresh = () => {
     setRefreshing(true);
     fetchData();
@@ -260,15 +194,7 @@ export default function AdminScreen() {
         text: "로그아웃",
         style: "destructive",
         onPress: async () => {
-          try {
-            const { error } = await supabase.auth.signOut();
-            if (error) throw error;
-          } catch (error: any) {
-            Alert.alert(
-              "오류",
-              "로그아웃 중 오류가 발생했습니다: " + error.message
-            );
-          }
+          await supabase.auth.signOut();
         },
       },
     ]);
@@ -285,31 +211,8 @@ export default function AdminScreen() {
     }
   };
 
-  // 공지사항 관리 화면
-  if (showAnnouncementManage) {
-    return (
-      <AnnouncementManageScreen
-        onBack={() => setShowAnnouncementManage(false)}
-        onUpdate={() => setAnnouncementRefresh((prev) => prev + 1)}
-      />
-    );
-  }
-
-  // 직원 상세보기 화면
-  if (selectedEmployee) {
-    return (
-      <EmployeeDetailScreen
-        employee={selectedEmployee}
-        onBack={() => setSelectedEmployee(null)}
-        onUpdate={() => {
-          fetchData();
-        }}
-      />
-    );
-  }
-
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
       {/* 탭 네비게이션 */}
       <View style={styles.tabContainer}>
         <TouchableOpacity
@@ -351,44 +254,6 @@ export default function AdminScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* 공지사항 배너 */}
-        <View style={styles.bannerContainer}>
-          <AnnouncementBanner
-            isAdmin
-            onManagePress={() => setShowAnnouncementManage(true)}
-            refreshTrigger={announcementRefresh}
-          />
-        </View>
-
-        {/* 직원 관리 탭에서만 월 선택 표시 */}
-        {activeTab === "employees" && (
-          <View style={styles.monthSelector}>
-            <TouchableOpacity
-              onPress={() => {
-                const date = new Date(selectedMonth + "-01");
-                date.setMonth(date.getMonth() - 1);
-                setSelectedMonth(format(date, "yyyy-MM"));
-              }}
-              style={styles.monthButton}
-            >
-              <Text style={styles.monthButtonText}>←</Text>
-            </TouchableOpacity>
-            <Text style={styles.monthText}>
-              {format(new Date(selectedMonth + "-01"), "yyyy년 MM월")}
-            </Text>
-            <TouchableOpacity
-              onPress={() => {
-                const date = new Date(selectedMonth + "-01");
-                date.setMonth(date.getMonth() + 1);
-                setSelectedMonth(format(date, "yyyy-MM"));
-              }}
-              style={styles.monthButton}
-            >
-              <Text style={styles.monthButtonText}>→</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#3b82f6" />
@@ -435,7 +300,9 @@ export default function AdminScreen() {
                     <View style={styles.infoRow}>
                       <Text style={styles.infoLabel}>날짜</Text>
                       <Text style={styles.infoValue}>
-                        {format(new Date(log.date), "yyyy년 MM월 dd일")}
+                        {format(new Date(log.date), "yyyy년 MM월 dd일 (EEE)", {
+                          locale: ko,
+                        })}
                       </Text>
                     </View>
                     <View style={styles.infoRow}>
@@ -452,14 +319,7 @@ export default function AdminScreen() {
                       <View style={styles.infoRow}>
                         <Text style={styles.infoLabel}>총 시간</Text>
                         <Text style={styles.infoValue}>
-                          {Number(
-                            calculateWorkHours(
-                              log.clock_in,
-                              log.clock_out,
-                              log.work_type
-                            )
-                          ).toFixed(1)}
-                          시간
+                          {calculateWorkHours(log.clock_in, log.clock_out)}시간
                         </Text>
                       </View>
                     )}
@@ -517,23 +377,11 @@ export default function AdminScreen() {
         ) : (
           employees.map((employee) => {
             const roleBadge = getRoleBadge(employee.role);
-            const stats = monthlyStats[employee.id] || {
-              totalHours: 0,
-              workDays: 0,
-              expectedPay: 0,
-            };
-            const totalHours = stats?.totalHours ?? 0;
-            const workDays = stats?.workDays ?? 0;
-            const expectedPay = stats?.expectedPay ?? 0;
 
             return (
-              <TouchableOpacity
-                key={employee.id}
-                style={styles.employeeCard}
-                onPress={() => setSelectedEmployee(employee)}
-              >
+              <View key={employee.id} style={styles.employeeCard}>
                 <View style={styles.employeeHeader}>
-                  <View style={{ flex: 1 }}>
+                  <View>
                     <Text style={styles.employeeName}>
                       {employee.full_name}
                     </Text>
@@ -552,41 +400,10 @@ export default function AdminScreen() {
                     </Text>
                   </View>
                 </View>
-
-                {/* 시급 정보 */}
-                <View style={styles.wageInfo}>
-                  <Text style={styles.wageLabel}>시급</Text>
-                  <Text style={styles.wageValue}>
-                    {(employee.hourly_wage || 0).toLocaleString()}원
-                  </Text>
-                </View>
-
-                {/* 월별 통계 */}
-                <View style={styles.statsContainer}>
-                  <View style={styles.statBox}>
-                    <Text style={styles.statLabel}>근무시간</Text>
-                    <Text style={styles.statValue}>
-                      {totalHours.toFixed(1)}h
-                    </Text>
-                  </View>
-                  <View style={styles.statBox}>
-                    <Text style={styles.statLabel}>근무일수</Text>
-                    <Text style={styles.statValue}>{workDays}일</Text>
-                  </View>
-                </View>
-
-                {/* 예상 급여 */}
-                <View style={styles.payBox}>
-                  <Text style={styles.payLabel}>예상 급여</Text>
-                  <Text style={styles.payValue}>
-                    ₩{expectedPay.toLocaleString()}
-                  </Text>
-                </View>
-
                 <Text style={styles.employeeDate}>
                   가입일: {format(new Date(employee.created_at), "yyyy-MM-dd")}
                 </Text>
-              </TouchableOpacity>
+              </View>
             );
           })
         )}
@@ -596,52 +413,14 @@ export default function AdminScreen() {
       <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
         <Text style={styles.logoutText}>로그아웃</Text>
       </TouchableOpacity>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F5F1E8",
-  },
-  bannerContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-  },
-  monthSelector: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#fff",
-    marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 8,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  monthButton: {
-    padding: 8,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 8,
-    minWidth: 40,
-    alignItems: "center",
-  },
-  monthButtonText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#374151",
-  },
-  monthText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1f2937",
+    backgroundColor: "#f5f5f5",
   },
   tabContainer: {
     flexDirection: "row",
@@ -852,90 +631,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
-  wageInfo: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 8,
-    marginBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
-  },
-  wageLabel: {
-    fontSize: 14,
-    color: "#6b7280",
-  },
-  wageValue: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#3b82f6",
-  },
-  statsContainer: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 12,
-  },
-  statBox: {
-    flex: 1,
-    backgroundColor: "#f3f4f6",
-    padding: 12,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  statLabel: {
-    fontSize: 12,
-    color: "#6b7280",
-    marginBottom: 4,
-  },
-  statValue: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1f2937",
-  },
-  payBox: {
-    backgroundColor: "#d1fae5",
-    padding: 12,
-    borderRadius: 8,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  payLabel: {
-    fontSize: 14,
-    color: "#065f46",
-  },
-  payValue: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#047857",
-  },
   employeeDate: {
     fontSize: 12,
     color: "#9ca3af",
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: "#e5e7eb",
   },
   logoutButton: {
-    backgroundColor: "#8B2500",
-    padding: 16,
+    backgroundColor: "#ef4444",
+    padding: 15,
     margin: 16,
     borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#A0522D",
-    shadowColor: "#8B2500",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
   },
   logoutText: {
-    color: "#FFFFFF",
+    color: "#fff",
     textAlign: "center",
-    fontSize: 17,
-    fontWeight: "700",
-    letterSpacing: 0.5,
+    fontSize: 16,
+    fontWeight: "600",
   },
 });

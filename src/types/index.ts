@@ -12,14 +12,13 @@ export interface Employee {
 
 export interface WorkLog {
   id: string;
-  employee_id: string;
+  user_id: string;
   date: string;
-  start_time: string;
-  end_time: string;
-  break_minutes?: number;
-  total_hours?: number;
+  clock_in: string | null;
+  clock_out: string | null;
   status: 'pending' | 'approved' | 'rejected';
-  notes?: string;
+  work_type?: string;
+  day_off_reason?: string;
   created_at?: string;
 }
 

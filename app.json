@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "employee-management-mobile",
+    "name": "고기당 직원관리",
     "slug": "employee-management-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,25 +8,36 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "scheme": "employeemanagement",
+    "description": "고기당 프리미엄 숙성삼겹 직원 근무 관리 시스템",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/logo.jpg",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#2d0a0a"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.employeemanagement.app",
+      "buildNumber": "1",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleURLTypes": [
+          {
+            "CFBundleURLSchemes": [
+              "com.googleusercontent.apps.168375852819-be8e8iknhsbcvgcrhqcnuasdr424dni7"
+            ]
+          }
+        ]
       }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#2d0a0a"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.employeemanagement.app",
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/favicon.png"

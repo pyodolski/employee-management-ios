@@ -8,10 +8,12 @@ import {
   ScrollView,
   TextInput,
   Platform,
+  SafeAreaView,
 } from "react-native";
 import { supabase } from "../config/supabase";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { format } from "date-fns";
+import { calculateWorkHours } from "../utils/timeUtils";
 
 interface Props {
   onClose: () => void;
@@ -30,8 +32,9 @@ export default function WorkRegisterScreen({ onClose, onSuccess }: Props) {
   const [showEndTimePicker, setShowEndTimePicker] = useState(false);
 
   const calculateTotalHours = () => {
-    const diff = endTime.getTime() - startTime.getTime();
-    const hours = diff / (1000 * 60 * 60);
+    const startTimeStr = format(startTime, "HH:mm");
+    const endTimeStr = format(endTime, "HH:mm");
+    const hours = calculateWorkHours(startTimeStr, endTimeStr);
     const breakHours = parseInt(breakMinutes || "0") / 60;
     return Math.max(0, hours - breakHours);
   };
@@ -52,14 +55,11 @@ export default function WorkRegisterScreen({ onClose, onSuccess }: Props) {
       if (!user) throw new Error("로그인이 필요합니다.");
 
       const { error } = await supabase.from("work_logs").insert({
-        employee_id: user.id,
+        user_id: user.id,
         date: format(date, "yyyy-MM-dd"),
-        start_time: format(startTime, "HH:mm"),
-        end_time: format(endTime, "HH:mm"),
-        break_minutes: parseInt(breakMinutes || "0"),
-        total_hours: totalHours,
+        clock_in: format(startTime, "HH:mm"),
+        clock_out: format(endTime, "HH:mm"),
         status: "pending",
-        notes: notes || null,
       });
 
       if (error) throw error;
@@ -75,7 +75,7 @@ export default function WorkRegisterScreen({ onClose, onSuccess }: Props) {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>근무 등록</Text>
         <TouchableOpacity onPress={onClose}>
@@ -209,7 +209,7 @@ export default function WorkRegisterScreen({ onClose, onSuccess }: Props) {
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
